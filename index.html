@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tablero de Tareas - Pizarrón Profesional</title>
+    <!-- Tailwind CSS para diseño rápido y responsivo -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Iconos de Phosphor -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Fuente Inter para legibilidad profesional -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            /* Fondo simulando un pizarrón oscuro elegante */
+            background-color: #1e222d; 
+            background-image: radial-gradient(#3a4052 1px, transparent 0);
+            background-size: 20px 20px;
+            color: #e2e8f0;
+            overflow-x: hidden;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Diseño de los Post-its */
+        .post-it {
+            background-color: #fdfd96; /* Amarillo por defecto */
+            color: #1e293b; /* Texto oscuro para contraste */
+            padding: 12px;
+            margin: 6px;
+            border-radius: 2px 2px 10px 2px; /* Esquina inferior derecha ligeramente doblada */
+            box-shadow: 2px 4px 6px rgba(0,0,0,0.25), inset 0 0 10px rgba(0,0,0,0.05);
+            cursor: grab;
+            position: relative;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            min-height: 90px;
+            font-size: 0.875rem;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Efecto de doblez en la esquina */
+        .post-it::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            border-width: 0 0 16px 16px;
+            border-style: solid;
+            border-color: transparent rgba(0,0,0,0.15) rgba(0,0,0,0.1) transparent;
+            display: block;
+            width: 0;
+            border-bottom-right-radius: 8px;
+        }
+
+        .post-it:hover {
+            transform: scale(1.03) rotate(1deg);
+            box-shadow: 4px 8px 12px rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+
+        .post-it:active {
+            cursor: grabbing;
+            transform: scale(1.05) rotate(-1.5deg);
+            box-shadow: 6px 10px 18px rgba(0,0,0,0.4);
+        }
+
+        /* Colores según Prioridad */
+        .post-it.urgente { background-color: #ff8b8b; } /* Rojo suave */
+        .post-it.importante { background-color: #ffc482; } /* Naranja suave */
+        .post-it.normal { background-color: #fef08a; } /* Amarillo clásico */
+
+        /* Efecto al arrastrar */
+        .post-it.dragging {
+            opacity: 0.6;
+            transform: scale(0.95);
+        }
+
+        /* Zonas donde se sueltan los post-its */
+        .drop-zone {
+            min-height: 130px;
+            transition: background-color 0.2s ease, border 0.2s ease;
+            padding: 0.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+            height: 100%;
+        }
+
+        .drop-zone.drag-over {
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 2px dashed #64748b;
+            border-radius: 0.5rem;
+        }
+
+        /* Grid del Tablero Principal */
+        .board-grid {
+            display: grid;
+            grid-template-columns: 140px minmax(250px, 1fr) minmax(250px, 1fr) minmax(250px, 1fr);
+            grid-template-rows: auto 1fr 1fr 1fr;
+            gap: 1px;
+            background-color: #334155; /* Color de las líneas del grid */
+            border: 2px solid #334155;
+            flex-grow: 1;
+            margin: 1rem;
+            border-radius: 0.75rem;
+            overflow: auto;
+        }
+
+        .grid-cell {
+            background-color: #0f172a; /* Fondo oscuro de las celdas */
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header-cell {
+            background-color: #1e293b;
+            color: #f8fafc;
+            font-weight: 700;
+            text-align: center;
+            padding: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            z-index: 5;
+        }
+
+        .row-header {
+            background-color: #1e293b;
+            color: #f8fafc;
+            font-weight: 700;
+            text-align: center;
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            position: relative;
+        }
+
+        /* Barras de color sutiles en los encabezados de fila */
+        .row-header.urgente-header { border-right: 6px solid #ef4444; }
+        .row-header.importante-header { border-right: 6px solid #f97316; }
+        .row-header.normal-header { border-right: 6px solid #eab308; }
+
+        /* Scrollbar personalizado */
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        /* Loader */
+        .loader {
+            border: 3px solid rgba(255,255,255,0.1);
+            border-left-color: #3b82f6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .line-clamp-3 {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;  
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Principal -->
+    <header class="bg-slate-900 border-b border-slate-700 p-4 shadow-lg flex justify-between items-center z-20 shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 p-2 rounded-lg text-white">
+                <i class="ph ph-kanban text-2xl"></i>
+            </div>
+            <div>
+                <h1 class="text-xl md:text-2xl font-bold tracking-tight text-white leading-none">Centro de Pendientes</h1>
+                <p class="text-xs text-slate-400 mt-1">Sincronizado con Google Sheets</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <div id="syncStatus" class="text-sm flex items-center gap-2 px-3 py-1 bg-slate-800 rounded-full text-green-400">
+                <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                <span class="hidden md:inline">Conectado</span>
+            </div>
+            <button onclick="fetchFromSheet()" class="p-2 rounded-full text-slate-400 hover:text-white hover:bg-slate-700 transition-colors" title="Actualizar tablero">
+                <i class="ph ph-arrows-clockwise text-xl"></i>
+            </button>
+            <button onclick="openTaskModal()" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-lg shadow-lg flex items-center gap-2 transition-all font-semibold transform hover:scale-105 active:scale-95">
+                <i class="ph ph-plus-circle text-lg"></i>
+                <span class="hidden sm:inline">Nuevo Pendiente</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Área Principal del Tablero -->
+    <main class="flex-grow flex flex-col p-2 md:p-4 overflow-hidden relative">
+        <!-- Overlay de Carga -->
+        <div id="loadingOverlay" class="absolute inset-0 bg-slate-900 bg-opacity-80 z-10 flex flex-col items-center justify-center hidden rounded-xl m-4 backdrop-blur-sm transition-opacity">
+            <div class="loader mb-4 w-10 h-10 border-4"></div>
+            <p class="text-white font-semibold text-lg tracking-wide">Sincronizando con Sheets...</p>
+        </div>
+
+        <div class="board-grid shadow-2xl overflow-auto custom-scrollbar">
+            <!-- Encabezados Superiores (Columnas: Estado) -->
+            <div class="header-cell bg-slate-900 border-b border-slate-700"></div> <!-- Esquina vacía -->
+            <div class="header-cell border-b border-slate-700">
+                <i class="ph ph-push-pin text-xl text-slate-400 mr-2"></i> Por Hacer
+            </div>
+            <div class="header-cell border-l-2 border-slate-700 border-b border-slate-700">
+                <i class="ph ph-spinner-gap text-xl text-blue-400 mr-2 animate-spin-slow"></i> En Curso
+            </div>
+            <div class="header-cell border-l-2 border-slate-700 border-b border-slate-700">
+                <i class="ph ph-check-circle text-xl text-green-400 mr-2"></i> Hecho
+            </div>
+
+            <!-- Fila 1: Urgente -->
+            <div class="row-header urgente-header border-b-2 border-slate-700">Urgente</div>
+            <div class="grid-cell border-b-2 border-slate-700 bg-slate-800/40">
+                <div class="drop-zone" data-status="por_hacer" data-priority="urgente" id="zone-por_hacer-urgente"></div>
+            </div>
+            <div class="grid-cell border-l-2 border-slate-700 border-b-2 border-slate-700 bg-slate-800/40">
+                <div class="drop-zone" data-status="en_curso" data-priority="urgente" id="zone-en_curso-urgente"></div>
+            </div>
+            <div class="grid-cell border-l-2 border-slate-700 border-b-2 border-slate-700 bg-slate-800/40">
+                <div class="drop-zone" data-status="hecho" data-priority="urgente" id="zone-hecho-urgente"></div>
+            </div>
+
+            <!-- Fila 2: Importante -->
+            <div class="row-header importante-header border-b-2 border-slate-700">Importante</div>
+            <div class="grid-cell border-b-2 border-slate-700 bg-slate-800/20">
+                <div class="drop-zone" data-status="por_hacer" data-priority="importante" id="zone-por_hacer-importante"></div>
+            </div>
+            <div class="grid-cell border-l-2 border-slate-700 border-b-2 border-slate-700 bg-slate-800/20">
+                <div class="drop-zone" data-status="en_curso" data-priority="importante" id="zone-en_curso-importante"></div>
+            </div>
+            <div class="grid-cell border-l-2 border-slate-700 border-b-2 border-slate-700 bg-slate-800/20">
+                <div class="drop-zone" data-status="hecho" data-priority="importante" id="zone-hecho-importante"></div>
+            </div>
+
+            <!-- Fila 3: Normal -->
+            <div class="row-header normal-header">Normal</div>
+            <div class="grid-cell bg-slate-900/50">
+                <div class="drop-zone" data-status="por_hacer" data-priority="normal" id="zone-por_hacer-normal"></div>
+            </div>
+            <div class="grid-cell border-l-2 border-slate-700 bg-slate-900/50">
+                <div class="drop-zone" data-status="en_curso" data-priority="normal" id="zone-en_curso-normal"></div>
+            </div>
+            <div class="grid-cell border-l-2 border-slate-700 bg-slate-900/50">
+                <div class="drop-zone" data-status="hecho" data-priority="normal" id="zone-hecho-normal"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal para Crear/Editar Tarea -->
+    <div id="taskModal" class="fixed inset-0 bg-slate-900 bg-opacity-75 hidden flex items-center justify-center z-50 p-4 backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
+            
+            <div class="bg-slate-50 px-6 py-5 border-b border-slate-200 flex justify-between items-center">
+                <h2 id="modalTitle" class="text-xl font-bold text-slate-800 flex items-center gap-2">
+                    <i class="ph ph-note-pencil text-blue-600 text-2xl"></i> Nuevo Pendiente
+                </h2>
+                <button onclick="closeTaskModal()" class="text-slate-400 hover:text-slate-700 hover:bg-slate-200 p-1.5 rounded-lg transition-colors">
+                    <i class="ph ph-x text-xl"></i>
+                </button>
+            </div>
+
+            <div class="p-6 overflow-y-auto custom-scrollbar flex-grow bg-white text-slate-800">
+                <form id="taskForm" class="space-y-5">
+                    <input type="hidden" id="taskId">
+                    
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">Título del Pendiente <span class="text-red-500">*</span></label>
+                        <input type="text" id="taskTitle" required class="w-full border border-slate-300 rounded-lg p-3 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all placeholder-slate-400 bg-slate-50" placeholder="Ej. Presentación de reporte mensual">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">Descripción / Notas</label>
+                        <textarea id="taskDesc" rows="3" class="w-full border border-slate-300 rounded-lg p-3 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all placeholder-slate-400 bg-slate-50 resize-y" placeholder="Anotaciones extra, links o detalles del pendiente..."></textarea>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1">Responsable</label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <i class="ph ph-user text-slate-400 text-lg"></i>
+                                </div>
+                                <input type="text" id="taskAssignee" class="w-full border border-slate-300 rounded-lg p-2.5 pl-10 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-slate-50" placeholder="Nombre (Ej. Juan)">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1">Prioridad <span class="text-red-500">*</span></label>
+                            <select id="taskPriority" required class="w-full border border-slate-300 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-slate-50 font-medium cursor-pointer">
+                                <option value="urgente" class="text-red-600">🔴 Urgente</option>
+                                <option value="importante" class="text-orange-500">🟠 Importante</option>
+                                <option value="normal" class="text-yellow-600" selected>🟡 Normal</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 bg-slate-100 p-4 rounded-lg border border-slate-200">
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1 text-slate-600">Fecha de Inicio</label>
+                            <input type="date" id="taskStartDate" class="w-full border border-slate-300 rounded-md p-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1 text-slate-600">Fecha Límite <span class="text-red-500">*</span></label>
+                            <input type="date" id="taskDueDate" required class="w-full border border-slate-300 rounded-md p-2 text-slate-700 focus:ring-2 focus:ring-red-300 focus:border-red-500 outline-none bg-white font-medium">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">Estado Actual</label>
+                        <select id="taskStatus" class="w-full border border-slate-300 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-slate-50 font-medium cursor-pointer">
+                            <option value="por_hacer">📋 Por Hacer</option>
+                            <option value="en_curso">⏳ En Curso</option>
+                            <option value="hecho">✅ Hecho</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+
+            <div class="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-between items-center">
+                <button type="button" id="btnDeleteTask" onclick="deleteCurrentTask()" class="text-red-600 hover:text-red-800 hover:bg-red-100 px-4 py-2 rounded-lg transition-colors hidden font-semibold flex items-center gap-2">
+                    <i class="ph ph-trash text-lg"></i> Eliminar
+                </button>
+                <div class="flex gap-3 ml-auto">
+                    <button type="button" onclick="closeTaskModal()" class="px-5 py-2.5 rounded-lg text-slate-600 hover:bg-slate-200 hover:text-slate-900 transition-colors font-semibold">
+                        Cancelar
+                    </button>
+                    <button type="button" onclick="saveTask()" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all font-semibold flex items-center gap-2">
+                        <i class="ph ph-floppy-disk text-lg"></i> Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alertas tipo Toast (Mensajes emergentes) -->
+    <div id="messageBox" class="fixed bottom-6 right-6 text-white p-4 rounded-xl shadow-2xl transform translate-y-24 opacity-0 transition-all duration-300 z-50 flex items-center gap-4 max-w-sm border border-white/10">
+        <i id="msgIcon" class="ph ph-info text-3xl"></i>
+        <div>
+            <h4 id="msgTitle" class="font-bold text-base tracking-wide">Aviso</h4>
+            <p id="msgText" class="text-sm text-slate-200 mt-0.5 leading-tight"></p>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // VARIABLES GLOBALES Y CONFIGURACIÓN
+        // ==========================================
+        let tasks = []; // Array en memoria para renderizar rápido
+
+        // 🔗 TU URL DE GOOGLE APPS SCRIPT (Ya configurada)
+        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw48493FmRwGeB2vlLfL0xKhWgJgFe2G1Nncbhid7e9HAw9m_yGYNzkSWMnXuhf_K6W/exec"; 
+
+        // Elementos del DOM
+        const taskModal = document.getElementById('taskModal');
+        const taskForm = document.getElementById('taskForm');
+        const btnDeleteTask = document.getElementById('btnDeleteTask');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        
+        // Inputs del formulario
+        const inputs = {
+            id: document.getElementById('taskId'),
+            title: document.getElementById('taskTitle'),
+            desc: document.getElementById('taskDesc'),
+            assignee: document.getElementById('taskAssignee'),
+            priority: document.getElementById('taskPriority'),
+            status: document.getElementById('taskStatus'),
+            startDate: document.getElementById('taskStartDate'),
+            dueDate: document.getElementById('taskDueDate')
+        };
+
+        // ==========================================
+        // FUNCIONES DE INICIO Y RED (FETCH API)
+        // ==========================================
+        function initApp() {
+            // Establecer fecha de inicio por defecto a hoy
+            const today = new Date().toISOString().split('T')[0];
+            inputs.startDate.value = today;
+
+            setupDragAndDrop();
+            fetchFromSheet(); // Cargar datos al iniciar
+        }
+
+        // Cargar datos (Lectura) desde Google Sheets
+        window.fetchFromSheet = async () => {
+            showLoading(true);
+            try {
+                const response = await fetch(APPS_SCRIPT_URL);
+                if (!response.ok) throw new Error('Error en la red');
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    tasks = result.data;
+                    renderBoard();
+                    showMessage("Sincronizado", "Pendientes cargados desde Sheets.", "success", 2000);
+                } else {
+                    console.error("Sheets retornó error:", result);
+                    showMessage("Error", "Problema al leer Google Sheets.", "error");
+                }
+            } catch (error) {
+                console.error("Error fetching data:", error);
+                showMessage("Error de Conexión", "No se pudo contactar a Google Sheets. Revisa la URL.", "error", 5000);
+            } finally {
+                showLoading(false);
+            }
+        };
+
+        // Enviar datos (Escritura/Borrado) a Google Sheets
+        async function sendToSheet(action, taskObj) {
+            showSyncIcon(true);
+            try {
+                const payload = { action: action, task: taskObj };
+                
+                // Usamos text/plain para evitar errores de CORS con Apps Script
+                const response = await fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                if (result.status !== 'success') {
+                    console.error(result.message);
+                    showMessage("Error al guardar", "Google Sheets no guardó el cambio.", "error");
+                }
+            } catch (error) {
+                console.error("Sync error:", error);
+                showMessage("Error de red", "Verifica tu conexión a internet.", "error");
+            } finally {
+                showSyncIcon(false);
+            }
+        }
+
+        // ==========================================
+        // MANEJO DE LA INTERFAZ Y EL MODAL
+        // ==========================================
+        window.openTaskModal = (taskId = null) => {
+            taskForm.reset();
+            const today = new Date().toISOString().split('T')[0];
+            
+            if (taskId) {
+                document.getElementById('modalTitle').innerHTML = '<i class="ph ph-note-pencil text-blue-600 text-2xl"></i> Editar Pendiente';
+                btnDeleteTask.classList.remove('hidden');
+                
+                const task = tasks.find(t => t.id === taskId);
+                if (task) {
+                    inputs.id.value = task.id;
+                    inputs.title.value = task.title || '';
+                    inputs.desc.value = task.desc || '';
+                    inputs.assignee.value = task.assignee || '';
+                    inputs.priority.value = task.priority || 'normal';
+                    inputs.status.value = task.status || 'por_hacer';
+                    inputs.startDate.value = task.startDate || '';
+                    inputs.dueDate.value = task.dueDate || '';
+                }
+            } else {
+                document.getElementById('modalTitle').innerHTML = '<i class="ph ph-plus-circle text-blue-600 text-2xl"></i> Nuevo Pendiente';
+                btnDeleteTask.classList.add('hidden');
+                inputs.id.value = '';
+                inputs.startDate.value = today;
+                inputs.status.value = 'por_hacer';
+            }
+            
+            taskModal.classList.remove('hidden');
+            setTimeout(() => inputs.title.focus(), 100);
+        };
+
+        window.closeTaskModal = () => {
+            taskModal.classList.add('hidden');
+        };
+
+        window.saveTask = async () => {
+            if (!inputs.title.value.trim()) {
+                showMessage("Faltan datos", "El título del pendiente es obligatorio.", "warning");
+                return;
+            }
+            if (!inputs.dueDate.value) {
+                showMessage("Faltan datos", "Debes ingresar una fecha límite.", "warning");
+                return;
+            }
+
+            const isNew = !inputs.id.value;
+            // Generar ID único corto si es nuevo
+            const taskObj = {
+                id: isNew ? 'tsk_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5) : inputs.id.value,
+                title: inputs.title.value.trim(),
+                desc: inputs.desc.value.trim(),
+                assignee: inputs.assignee.value.trim(),
+                priority: inputs.priority.value,
+                status: inputs.status.value,
+                startDate: inputs.startDate.value,
+                dueDate: inputs.dueDate.value,
+            };
+
+            // Actualización Optismista en Pantalla (rápido)
+            if (isNew) {
+                tasks.push(taskObj);
+            } else {
+                const index = tasks.findIndex(t => t.id === taskObj.id);
+                if (index !== -1) tasks[index] = taskObj;
+            }
+            
+            renderBoard();
+            closeTaskModal();
+            showMessage("Guardado", "Enviando a Google Sheets...", "info", 1500);
+
+            // Enviar a Sheets en segundo plano
+            await sendToSheet('save', taskObj);
+        };
+
+        window.deleteCurrentTask = async () => {
+            const taskId = inputs.id.value;
+            if (!taskId) return;
+            
+            // Borrado Optimista en Pantalla
+            const taskToDelete = tasks.find(t => t.id === taskId);
+            tasks = tasks.filter(t => t.id !== taskId);
+            renderBoard();
+            closeTaskModal();
+            showMessage("Eliminado", "Borrando de Google Sheets...", "info", 1500);
+
+            // Enviar orden de borrado a Sheets
+            if (taskToDelete) await sendToSheet('delete', taskToDelete);
+        };
+
+        // ==========================================
+        // RENDERIZADO DEL TABLERO Y POST-ITS
+        // ==========================================
+        function renderBoard() {
+            // Limpiar zonas primero
+            document.querySelectorAll('.drop-zone').forEach(zone => { zone.innerHTML = ''; });
+
+            tasks.forEach(task => {
+                const zoneId = `zone-${task.status}-${task.priority}`;
+                const zone = document.getElementById(zoneId);
+                
+                if (zone) {
+                    const postIt = createPostItElement(task);
+                    zone.appendChild(postIt);
+                }
+            });
+            
+            checkApproachingDeadlines();
+        }
+
+        function createPostItElement(task) {
+            const el = document.createElement('div');
+            el.className = `post-it ${task.priority}`;
+            el.draggable = true;
+            el.dataset.id = task.id;
+
+            // Formatear fecha para el Post-it (ej. "15 Oct")
+            let dateDisplay = '';
+            let isUrgentDate = false;
+            if (task.dueDate) {
+                const due = new Date(task.dueDate + 'T23:59:59');
+                const formatter = new Intl.DateTimeFormat('es', { day: '2-digit', month: 'short' });
+                dateDisplay = formatter.format(due);
+                isUrgentDate = isDateApproaching(task.dueDate, 1); // Faltan 1 día o menos
+            }
+
+            const userIcon = task.assignee ? `<span class="flex items-center gap-1 bg-black/10 px-1.5 py-0.5 rounded text-xs" title="Responsable: ${task.assignee}"><i class="ph ph-user"></i> ${escapeHTML(task.assignee.split(' ')[0])}</span>` : '';
+            const descIcon = task.desc ? `<i class="ph ph-text-align-left text-sm opacity-70" title="Tiene notas/descripción"></i>` : '';
+            
+            // Punto rojo animado si está a punto de vencer y no está hecho
+            const urgentBadge = (isUrgentDate && task.status !== 'hecho') 
+                ? `<span class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-red-600 animate-bounce shadow border border-white" title="¡Se acerca la fecha límite!"></span>` 
+                : '';
+
+            // Construir el HTML del Post-it
+            el.innerHTML = `
+                ${urgentBadge}
+                <div class="font-bold mb-2 leading-tight line-clamp-3" style="font-size: 0.95rem;">${escapeHTML(task.title)}</div>
+                
+                <div class="mt-auto flex justify-between items-end gap-1">
+                    <div class="flex gap-1 items-center">
+                        ${userIcon}
+                        ${descIcon}
+                    </div>
+                    ${dateDisplay ? `<div class="text-xs font-bold bg-black/10 px-1.5 py-0.5 rounded flex items-center gap-1"><i class="ph ph-calendar-blank"></i> ${dateDisplay}</div>` : ''}
+                </div>
+            `;
+
+            // Eventos
+            el.addEventListener('click', () => openTaskModal(task.id));
+            el.addEventListener('dragstart', handleDragStart);
+            el.addEventListener('dragend', handleDragEnd);
+
+            return el;
+        }
+
+        // ==========================================
+        // LÓGICA DE DRAG AND DROP (Arrastrar)
+        // ==========================================
+        let draggedTaskEl = null;
+
+        function setupDragAndDrop() {
+            const dropZones = document.querySelectorAll('.drop-zone');
+            
+            dropZones.forEach(zone => {
+                zone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    zone.classList.add('drag-over');
+                });
+                
+                zone.addEventListener('dragleave', () => {
+                    zone.classList.remove('drag-over');
+                });
+                
+                zone.addEventListener('drop', async (e) => {
+                    e.preventDefault();
+                    zone.classList.remove('drag-over');
+                    
+                    if (!draggedTaskEl) return;
+
+                    const taskId = draggedTaskEl.dataset.id;
+                    const newStatus = zone.dataset.status;
+                    const newPriority = zone.dataset.priority;
+                    
+                    const taskIndex = tasks.findIndex(t => t.id === taskId);
+                    if (taskIndex !== -1) {
+                        const task = tasks[taskIndex];
+                        const oldStatus = task.status;
+                        
+                        // Si hubo un cambio de zona
+                        if (task.status !== newStatus || task.priority !== newPriority) {
+                            task.status = newStatus;
+                            task.priority = newPriority;
+                            
+                            // 1. Mover visualmente de inmediato
+                            zone.appendChild(draggedTaskEl);
+                            draggedTaskEl.className = `post-it ${newPriority}`;
+                            
+                            // Animación de celebración si se movió a Hecho
+                            if(oldStatus !== 'hecho' && newStatus === 'hecho'){
+                                showMessage("¡Excelente!", "Pendiente completado.", "success");
+                            }
+
+                            // 2. Enviar cambio a Google Sheets en background
+                            await sendToSheet('save', task);
+                        }
+                    }
+                });
+            });
+        }
+
+        function handleDragStart(e) {
+            draggedTaskEl = this;
+            setTimeout(() => this.classList.add('dragging'), 0);
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', this.dataset.id); 
+        }
+
+        function handleDragEnd() {
+            draggedTaskEl = null;
+            this.classList.remove('dragging');
+            document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
+        }
+
+        // ==========================================
+        // UTILIDADES Y AYUDANTES
+        // ==========================================
+        function isDateApproaching(dateStr, daysThreshold = 2) {
+            if (!dateStr) return false;
+            const dueDate = new Date(dateStr + 'T23:59:59');
+            const now = new Date();
+            const diffTime = dueDate - now;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            return diffDays >= 0 && diffDays <= daysThreshold;
+        }
+
+        function checkApproachingDeadlines() {
+            let urgentTasks = tasks.filter(t => t.status !== 'hecho' && isDateApproaching(t.dueDate, 1));
+            if (urgentTasks.length > 0) {
+                // Pequeño retraso para que no interrumpa la carga inicial visualmente
+                setTimeout(() => {
+                    showMessage("Atención", `Tienes ${urgentTasks.length} pendiente(s) próximos a vencer.`, "warning", 6000);
+                }, 1500);
+            }
+        }
+
+        // Notificaciones bonitas en pantalla (Reemplaza a los molestos alert())
+        function showMessage(title, text, type = 'info', duration = 3000) {
+            const box = document.getElementById('messageBox');
+            const icon = document.getElementById('msgIcon');
+            
+            document.getElementById('msgTitle').innerText = title;
+            document.getElementById('msgText').innerText = text;
+            
+            // Limpiar clases anteriores
+            box.className = 'fixed bottom-6 right-6 text-white p-4 rounded-xl shadow-2xl transform transition-all duration-300 z-[70] flex items-center gap-4 max-w-sm border border-white/20';
+            
+            if(type === 'error') {
+                box.classList.add('bg-red-600');
+                icon.className = 'ph ph-warning-circle text-3xl text-red-200';
+            } else if (type === 'success') {
+                box.classList.add('bg-green-600');
+                icon.className = 'ph ph-check-circle text-3xl text-green-200';
+            } else if (type === 'warning') {
+                box.classList.add('bg-amber-600');
+                icon.className = 'ph ph-warning text-3xl text-amber-200';
+            } else {
+                box.classList.add('bg-slate-800');
+                icon.className = 'ph ph-info text-3xl text-blue-400';
+            }
+
+            box.classList.remove('translate-y-24', 'opacity-0');
+            setTimeout(() => { box.classList.add('translate-y-24', 'opacity-0'); }, duration);
+        }
+
+        function showLoading(show) {
+            if (show) loadingOverlay.classList.remove('hidden');
+            else loadingOverlay.classList.add('hidden');
+        }
+
+        function showSyncIcon(show) {
+            const status = document.getElementById('syncStatus');
+            if(show) {
+                status.innerHTML = `<i class="ph ph-spinner-gap animate-spin text-lg"></i> <span class="hidden md:inline">Guardando...</span>`;
+                status.classList.replace('text-green-400', 'text-blue-400');
+            } else {
+                status.innerHTML = `<div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> <span class="hidden md:inline">Conectado</span>`;
+                status.classList.replace('text-blue-400', 'text-green-400');
+            }
+        }
+
+        // Seguridad contra inyección de HTML en campos de texto
+        function escapeHTML(str) {
+            if (!str) return "";
+            return str.replace(/[&<>'"]/g, 
+                tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag])
+            );
+        }
+
+        // Arrancar la app al cargar el documento
+        window.addEventListener('DOMContentLoaded', initApp);
+
+    </script>
+</body>
+</html>
