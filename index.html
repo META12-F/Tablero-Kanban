@@ -164,6 +164,21 @@
                     </div>
                 </div>
 
+                <div class="mt-4 p-4 bg-slate-900/50 rounded-lg border border-slate-700">
+                    <label class="block text-sm font-medium text-slate-300 mb-2">
+                        <i class="ph ph-paperclip text-blue-400"></i> Evidencia (Opcional - Foto o PDF)
+                    </label>
+                    <input type="file" id="taskFile" accept=".pdf,image/*" class="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 transition-colors">
+                    
+                    <div class="mt-3 flex items-center gap-2">
+                        <input type="checkbox" id="sendToDiana" class="w-4 h-4 text-blue-600 bg-slate-900 border-slate-600 rounded focus:ring-blue-500 cursor-pointer">
+                        <label for="sendToDiana" class="text-sm text-slate-300 font-medium cursor-pointer">Enviar evidencia por correo a Lic. Diana al guardar</label>
+                    </div>
+                    <div id="evidenceLinkContainer" class="mt-2 hidden">
+                        <a id="evidenceLink" href="#" target="_blank" class="text-xs text-blue-400 hover:text-blue-300 underline"><i class="ph ph-link"></i> Ver evidencia guardada</a>
+                    </div>
+                </div>
+
                 <div class="flex justify-between items-center mt-6 pt-4 border-t border-slate-700">
                     <button type="button" onclick="deleteTask()" id="btnDelete" class="text-red-400 hover:text-red-300 text-sm font-medium hidden">
                         <i class="ph ph-trash align-middle"></i> Eliminar
@@ -227,11 +242,12 @@
                     tasks = data.tasks || [];
                     renderTasks();
                 } else {
-                    showMessage("Error", "No se pudieron cargar las tareas.", "error");
+                    // Ahora te dirá EXACTAMENTE cuál es el error que manda Google
+                    showMessage("Error de Sheets", data.message || "Revisa el nombre de la pestaña (Hoja 1).", "error", 6000);
                 }
             } catch(e) {
                 console.error(e);
-                showMessage("Sin conexión", "Revisa tu internet.", "error");
+                showMessage("Sin conexión", "Asegúrate de que Apps Script esté publicado para 'Cualquier Persona'.", "error", 5000);
             }
             showSyncIcon(false);
         }
@@ -241,10 +257,18 @@
             showSyncIcon(true);
             try {
                 const payload = { action: action, task: taskData };
-                await fetch(APPS_SCRIPT_URL, {
+                const res = await fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
-                    body: JSON.stringify(payload) // Usamos plain text fetch per Google constraints a veces, JSON works normally with CORS setup
+                    headers: {
+                        'Content-Type': 'text/plain;charset=utf-8', // Blindaje anti-bloqueos del navegador
+                    },
+                    body: JSON.stringify(payload)
                 });
+                const data = await res.json();
+                
+                if(data.status === 'error') {
+                    showMessage("Error al guardar", data.message, "error", 5000);
+                }
             } catch(e) {
                 console.error(e);
                 showMessage("Aviso de red", "Cambio local hecho, pero falló conexión a nube.", "error");
@@ -303,6 +327,8 @@
                         }
                     }
 
+                    let evidenceIcon = task.evidenceUrl ? `<i class="ph ph-paperclip text-slate-400 ml-auto" title="Tiene evidencia adjunta"></i>` : '';
+
                     el.innerHTML = `
                         ${alertDot}
                         <h4>${task.title}</h4>
@@ -310,6 +336,7 @@
                         <div class="footer">
                             <span class="flex items-center gap-1"><i class="ph ph-user"></i> ${task.assignee || 'N/A'}</span>
                             <span class="flex items-center gap-1"><i class="ph ph-calendar"></i> ${task.dueDate || 'Sin fecha'}</span>
+                            ${evidenceIcon}
                         </div>
                     `;
                     cell.appendChild(el);
@@ -349,6 +376,13 @@
                 // Actualizar localmente
                 const taskIndex = tasks.findIndex(t => t.id === currentDragId);
                 if (taskIndex > -1) {
+                    // 🛑 CANDADO DE CALIDAD: Evitar arrastrar a HECHO si no hay evidencia
+                    if (newStatus === 'Hecho' && !tasks[taskIndex].evidenceUrl) {
+                        showMessage("Evidencia requerida", "No puedes pasar a 'Hecho' sin subir una evidencia (Foto/PDF) primero 📎", "error", 4500);
+                        currentDragId = null;
+                        return; // Cancela el movimiento y lo regresa a su lugar
+                    }
+
                     tasks[taskIndex].status = newStatus;
                     tasks[taskIndex].priority = newPriority;
                     
@@ -368,6 +402,10 @@
             form.reset();
             document.getElementById('taskStartDate').value = new Date().toISOString().split('T')[0];
 
+            document.getElementById('taskFile').value = '';
+            document.getElementById('sendToDiana').checked = false;
+            document.getElementById('evidenceLinkContainer').classList.add('hidden');
+
             if (id) {
                 const task = tasks.find(t => t.id === id);
                 document.getElementById('modalTitleText').textContent = 'Editar Pendiente';
@@ -379,6 +417,11 @@
                 document.getElementById('taskStatus').value = task.status;
                 document.getElementById('taskDueDate').value = task.dueDate || '';
                 document.getElementById('btnDelete').classList.remove('hidden');
+
+                if(task.evidenceUrl) {
+                    document.getElementById('evidenceLinkContainer').classList.remove('hidden');
+                    document.getElementById('evidenceLink').href = task.evidenceUrl;
+                }
             } else {
                 document.getElementById('modalTitleText').textContent = 'Nuevo Pendiente';
                 document.getElementById('taskId').value = 'T-' + Date.now();
@@ -409,9 +452,22 @@
             }, 200); // Igual a la duración de la transición CSS
         };
 
-        window.saveTaskForm = (e) => {
+        window.saveTaskForm = async (e) => {
             e.preventDefault();
+            showSyncIcon(true);
             
+            // 🛑 CANDADO DE CALIDAD: Evitar guardar como HECHO desde el formulario si no hay archivo
+            const selectedStatus = document.getElementById('taskStatus').value;
+            const currentId = document.getElementById('taskId').value;
+            const existing = tasks.find(t => t.id === currentId);
+            const fileInputNode = document.getElementById('taskFile');
+            
+            if (selectedStatus === 'Hecho' && fileInputNode.files.length === 0 && !(existing && existing.evidenceUrl)) {
+                showMessage("Evidencia requerida", "Sube una foto o PDF antes de marcar como 'Hecho' 📎", "error", 4500);
+                showSyncIcon(false);
+                return; // Detiene el proceso de guardado y obliga al usuario a subir archivo
+            }
+
             const task = {
                 id: document.getElementById('taskId').value,
                 title: document.getElementById('taskTitle').value,
@@ -420,22 +476,55 @@
                 priority: document.getElementById('taskPriority').value,
                 status: document.getElementById('taskStatus').value,
                 startDate: document.getElementById('taskStartDate') ? document.getElementById('taskStartDate').value : new Date().toISOString().split('T')[0],
-                dueDate: document.getElementById('taskDueDate').value
+                dueDate: document.getElementById('taskDueDate').value,
+                sendToDiana: document.getElementById('sendToDiana').checked
             };
 
+            const existingTask = tasks.find(t => t.id === task.id);
+            if(existingTask && existingTask.evidenceUrl) {
+                task.evidenceUrl = existingTask.evidenceUrl;
+            }
+
+            const fileInput = document.getElementById('taskFile');
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                showMessage("Codificando archivo...", "Preparando la evidencia para Google Drive.", "info", 4000);
+                
+                const reader = new FileReader();
+                reader.onload = async function(e) {
+                    const base64Data = e.target.result.split(',')[1];
+                    task.fileBase64 = base64Data;
+                    task.fileName = file.name;
+                    task.mimeType = file.type;
+                    
+                    await finalizeTaskSave(task);
+                };
+                reader.readAsDataURL(file);
+            } else {
+                await finalizeTaskSave(task);
+            }
+        };
+
+        async function finalizeTaskSave(task) {
             const index = tasks.findIndex(t => t.id === task.id);
             if (index > -1) {
                 tasks[index] = task;
-                showMessage("Actualizado", "Cambios guardados localmente.", "info");
+                showMessage("Actualizando...", "Enviando datos a Google Sheets.", "info");
             } else {
                 tasks.push(task);
-                showMessage("Creado", "Nuevo pendiente registrado.", "success");
+                showMessage("Creando...", "Registrando pendiente y archivos...", "info");
             }
 
             renderTasks();
             closeModal();
-            syncToSheet('save', task);
-        };
+            await syncToSheet('save', task);
+
+            // Si subió un archivo, recargamos el tablero unos segundos después 
+            // para que traiga la URL de Google Drive que el servidor acaba de generar.
+            if(task.fileBase64) {
+                setTimeout(fetchFromSheet, 3500);
+            }
+        }
 
         window.deleteTask = () => {
             const id = document.getElementById('taskId').value;
